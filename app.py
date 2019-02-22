@@ -1,7 +1,8 @@
 import hashlib
 import os
 from functools import total_ordering
-from typing import List, Dict, Tuple
+from typing import Dict, Tuple, Set
+from graph import process
 
 BLOCK_SIZE = 65536
 
@@ -16,6 +17,10 @@ def hash(path):
     return sha
 
 
+def byte_arr_to_hex_string(bt_arr: bytearray) -> str:
+    return ''.join(format(byte, '02x') for byte in bt_arr)
+
+
 @total_ordering
 class Checksum:
     def __init__(self, sha256, app, version):
@@ -24,7 +29,7 @@ class Checksum:
         self.version = version
 
     def checksum(self):
-        return ''.join(format(byte, '02x') for byte in self.sha256)
+        return
 
     def __lt__(self, o) -> bool:
         return self.sha256 < o.sha256
@@ -36,41 +41,30 @@ class Checksum:
         return "Checksum(%s, %s, %s)" % (self.app, self.version, self.checksum())
 
 
-# returns heap of checksum
-def scan_path(app, version, path) -> List[str]:
-    pq = []
+checksumToAppVersion: Dict[str, Set[Tuple[str, str]]] = {}
+appVersionToChecksum: Dict[Tuple[str, str], Set[str]] = {}
+
+
+def scan_path(app_version, path) -> Set[str]:
+    pq = set()
     for root, dirs, files in os.walk(path):
         for file_name in files:
             try:
-                byte_arr = hash(os.path.join(root, file_name)).digest()
-                pq.append(Checksum(byte_arr, app, version).checksum())
-                # heapq.heappush(pq, Checksum(byte_arr, app, version).checksum())
+                cs = byte_arr_to_hex_string(hash(os.path.join(root, file_name)).digest())
+                checksumToAppVersion.setdefault(cs, set()).add(app_version)
+                pq.add(cs)
             except:
                 pass
     return pq
 
-
-checksumToAppVersion: Dict[str, List[Tuple[str, str]]] = {}
-appVersionToChecksum: Dict[Tuple[str, str], List[str]] = {}
-pqs: List[Tuple[str, str, List[str]]] = []
 
 dir = "fetch/projects"
 for app in os.listdir(dir):
     app_path = dir + '/' + app
     for version in os.listdir(app_path):
         version_path = app_path + '/' + version
-        pqs.append((app, version, scan_path(app, version, version_path)))
-        appVersionToChecksum[(app, version)] = []
+        app_version = (app, version)
+        appVersionToChecksum[app_version] = scan_path(app_version, version_path)
 
-for (app, version, pq) in pqs:
-    appVersion = (app, version)
-    for checksum in pq:
-        checksumToAppVersion.setdefault(checksum, []).append(appVersion)
 
-for key, values in checksumToAppVersion.items():
-    if len(values) == 1:
-        appVersion = values[0]
-        appVersionToChecksum[appVersion].append(key)
-
-for key, values in appVersionToChecksum.items():
-    print(str(key) + ' ' + str(values))
+process(checksumToAppVersion, appVersionToChecksum)
