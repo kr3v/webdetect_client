@@ -2,6 +2,8 @@ import hashlib
 import os
 from functools import total_ordering
 from typing import Dict, Tuple, Set
+
+import db
 from graph import process
 
 BLOCK_SIZE = 65536
@@ -50,13 +52,20 @@ def scan_path(app_version, path) -> Set[str]:
     for root, dirs, files in os.walk(path):
         for file_name in files:
             try:
-                cs = byte_arr_to_hex_string(hash(os.path.join(root, file_name)).digest())
+                path = os.path.join(root, file_name)
+                cs = db.get_by_path(path)
+                if cs is None:
+                    cs = byte_arr_to_hex_string(hash(os.path.join(root, file_name)).digest())
+                    db.insert(path, cs)
                 checksumToAppVersion.setdefault(cs, set()).add(app_version)
                 pq.add(cs)
-            except:
-                pass
+            except Exception as e:
+                print(e)
+                raise e
     return pq
 
+
+db.init()
 
 dir = "fetch/projects"
 for app in os.listdir(dir):
@@ -65,6 +74,5 @@ for app in os.listdir(dir):
         version_path = app_path + '/' + version
         app_version = (app, version)
         appVersionToChecksum[app_version] = scan_path(app_version, version_path)
-
 
 process(checksumToAppVersion, appVersionToChecksum)

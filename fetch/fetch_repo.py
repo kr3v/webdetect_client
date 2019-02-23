@@ -43,9 +43,27 @@ def rxjava_handler(app: str, version: str, path: str) -> List[Tuple[str, str]]:
         result.append((sub_app, sub_app_path))
     return result
 
+
+def spring_boot_handler(app: str, version: str, path: str) -> List[Tuple[str, str]]:
+    result = []
+    for sub_path in ['spring-boot-project/spring-boot-autoconfigure',
+                     'spring-boot-project/spring-boot-starters']:
+        sub_app = '%s-%s/%s' % (app, sub_path, version)
+        sub_app_path = '%s/%s' % (flattened_paths, sub_app)
+        app_path = '%s/%s' % (path, sub_path)
+
+        mkdir(sub_app_path).wait()
+        if os.path.exists(app_path) and os.path.isdir(app_path):
+            subprocess.Popen(['sh', '-c', 'mv %s/* %s' % (app_path, sub_app_path)])
+
+        result.append((sub_app, sub_app_path))
+    return result
+
+
 repos = [
     # ('ben-manes/caffeine', caffeine_handler),
-    ('ReactiveX/RxJava', rxjava_handler)
+    # ('ReactiveX/RxJava', rxjava_handler),
+    ('spring-projects/spring-boot', spring_boot_handler)
 ]
 
 

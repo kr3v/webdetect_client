@@ -9,12 +9,12 @@ SUFFICIENT_CHECK_SUMS = 2
 class AppVersion:
     key: Tuple[str, str]
     value: Set[Checksum]
-    defined: bool
+    exclusive_check_sums: int
 
     def __init__(self, key: Tuple[str, str], value: Set[Checksum]):
         self.key = key
         self.value = value
-        self.defined = False
+        self.exclusive_check_sums = 0
 
     def __hash__(self):
         return hash(self.key)
@@ -23,21 +23,15 @@ class AppVersion:
         return isinstance(other, AppVersion) and self.key == other.key
 
     # can be cached with visitors
-    def is_defined(self) -> bool:
-        if self.defined:
-            return True
-
+    def calc_exclusive_check_sums(self):
         own_check_sums = 0
         for checksum in self.value:
             if len(checksum.value) == 1:
                 own_check_sums += 1
-            if own_check_sums >= SUFFICIENT_CHECK_SUMS:
-                break
+        self.exclusive_check_sums = own_check_sums
 
-        defined = own_check_sums >= SUFFICIENT_CHECK_SUMS
-        if defined:
-            self.defined = True
-        return defined
+    def is_defined(self) -> bool:
+        return self.exclusive_check_sums >= SUFFICIENT_CHECK_SUMS
 
     def remove_non_exclusive_check_sums(self) -> List[Checksum]:
         removed_check_sums: List[Checksum] = []
@@ -45,8 +39,9 @@ class AppVersion:
             if len(check_sum.value) > 1:
                 check_sum.value.remove(self)
                 removed_check_sums.append(check_sum)
-                # if len(check_sum.value) is 1:
-                #     for app_version in check_sum.value:
+                if len(check_sum.value) is 1:
+                    for app_version in check_sum.value:
+                        app_version.exclusive_check_sums += 1
 
         for check_sum in removed_check_sums:
             self.value.remove(check_sum)
@@ -110,6 +105,7 @@ def process(checksum_to_app_version: Dict[str, Set[Tuple[str, str]]],
 
     bfs_queue: Deque[AppVersion] = deque()
     for app_version in app_versions.values():
+        app_version.calc_exclusive_check_sums()
         if app_version.is_defined():
             bfs_queue.append(app_version)
 
