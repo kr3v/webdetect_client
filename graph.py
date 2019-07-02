@@ -107,6 +107,27 @@ def create_graph(
     av_dict: Dict[Tuple[str, str], AppVersion] = {}
     for av_tuple, _ in av_to_cs.items():
         av_dict[av_tuple] = AppVersion(av_tuple, SortedSet())
+    av_to_cs.clear()
+
+    cs_dict: Dict[str, Checksum] = {}
+    for cs_str, av_dict_tuples in cs_to_av.items():
+        cs = Checksum(cs_str, set())
+        cs_dict[cs_str] = cs
+        for av_tuple in av_dict_tuples:
+            av = av_dict[av_tuple]
+            cs.value.add(av)
+            av.value.add(cs)
+    return av_dict, cs_dict
+
+
+def create_graph_light(
+        cs_to_av: Dict[str, Set[Tuple[str, str]]],
+        avs: Set[Tuple[str, str]]
+) -> Tuple[Dict[Tuple[str, str], AppVersion], Dict[str, Checksum]]:
+    av_dict: Dict[Tuple[str, str], AppVersion] = {}
+    for av_tuple in avs:
+        av_dict[av_tuple] = AppVersion(av_tuple, SortedSet())
+    avs.clear()
 
     cs_dict: Dict[str, Checksum] = {}
     for cs_str, av_dict_tuples in cs_to_av.items():

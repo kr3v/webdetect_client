@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from typing import Tuple, Dict, List
+from typing import Tuple, Dict, Set, List
 
-from graph import verify_consistency, create_graph, find_defined_av_dict, AppVersion
-from path_scanner import scan_path
-from similarity_matrix import similarity_matrix
+from graph import create_graph_light, find_defined_av_dict, AppVersion, SUFFICIENT_CHECK_SUMS
+from path_scanner import scan_csv_light
 
 
 def debug_print(
@@ -47,26 +46,39 @@ def debug_print_matrix(app, matrix, versions):
 
 
 def main():
-    cs_to_av, av_to_cs = scan_path('fetch/projects')
+    # verify_consistency(cs_dict, av_dict)
+    cs_to_av, avs = scan_csv_light('wp.list')
 
-    av_dict, cs_dict = create_graph(cs_to_av, av_to_cs)
-    verify_consistency(cs_dict, av_dict)
+    av_dict, cs_dict = create_graph_light(cs_to_av, avs)
+
+    cs_to_av.clear()
 
     defined_av_dict: Dict[Tuple[str, str], AppVersion] = find_defined_av_dict(av_dict)
-    verify_consistency(cs_dict, av_dict)
 
-    not_defined_av_dict: Dict[str, List[Tuple[str, AppVersion]]] = {}
-    for (key, value) in av_dict.items():
-        if key not in defined_av_dict:
-            app = key[0]
-            version = key[1]
-            not_defined_av_dict.setdefault(app, list()).append((version, value))
+    for (k, v) in defined_av_dict.items():
+        v
 
-    for (app, versions_unsorted) in not_defined_av_dict.items():
-        versions = [x for x in versions_unsorted if len(x[1].value) > 0]
-        versions.sort()
-        matrix = similarity_matrix(versions)
-        debug_print_matrix(app, matrix, versions)
+    # print("Solutions found")
+    # verify_consistency(cs_dict, av_dict)
+
+    # not_defined_av_dict: Dict[str, List[Tuple[str, AppVersion]]] = {}
+    # for (key, value) in av_dict.items():
+    #     if key not in defined_av_dict:
+    #         app = key[0]
+    #         version = key[1]
+    #         not_defined_av_dict.setdefault(app, list()).append((version, value))
+    #
+    # not_defined_avs: Set[Tuple[str, str]] = set()
+    # for key in av_dict.keys():
+    #     if key not in defined_av_dict:
+    #         not_defined_avs.add(key)
+
+    # print('%d\t%d\t%d' % (SUFFICIENT_CHECK_SUMS, len(defined_av_dict), len(not_defined_avs)))
+
+    # for (app, versions_unsorted) in not_defined_av_dict.items():
+    #     versions = [x for x in versions_unsorted if len(x[1].value) > 0]
+    #     matrix = similarity_matrix(versions)
+    #     debug_print_matrix(app, matrix, versions)
 
 
 if __name__ == '__main__':
