@@ -80,10 +80,10 @@ def scan_app_version(
         for file_name in files:
             try:
                 path = os.path.join(root, file_name)
-                # cs = db.get_by_path(path)
+                # cs = db.json.get_by_path(path)
                 # if cs is None:
                 cs = byte_arr_to_hex_string(hash(path).digest())
-                # db.insert(path, cs)
+                # db.json.insert(path, cs)
                 checksum_to_app_version.setdefault(cs, set()).add(app_version)
                 pq.add(cs)
             except Exception as e:

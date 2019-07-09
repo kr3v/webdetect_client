@@ -7,7 +7,7 @@ from typing import Tuple, List
 
 from sortedcontainers import SortedSet
 
-from graph import AppVersion, Checksum
+from server.graph import AppVersion, Checksum
 
 
 @total_ordering

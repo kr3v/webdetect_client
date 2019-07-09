@@ -6,20 +6,20 @@ from typing import Tuple, Dict, Set, List, Deque
 
 from sortedcontainers import SortedSet
 
-SUFFICIENT_CHECK_SUMS = 3
-
 
 class AppVersion:
     key: Tuple[str, str]
     value: SortedSet[Checksum]
     depends_on: Dict[Checksum, List[AppVersion]]
     exclusive_cs: int
+    sufficient_check_sums: int
 
-    def __init__(self, key: Tuple[str, str], value: SortedSet[Checksum]):
+    def __init__(self, key: Tuple[str, str], value: SortedSet[Checksum], sufficient_check_sums: int):
         self.key = key
         self.value = value
         self.exclusive_cs = 0
         self.depends_on = dict()
+        self.sufficient_check_sums = sufficient_check_sums
 
     def __hash__(self):
         return hash(self.key)
@@ -36,7 +36,7 @@ class AppVersion:
         self.exclusive_cs = own_cs_dict
 
     def is_defined(self) -> bool:
-        return self.exclusive_cs >= SUFFICIENT_CHECK_SUMS
+        return self.exclusive_cs >= self.sufficient_check_sums
 
     def remove_non_exclusive_cs(self) -> List[Checksum]:
         removed_cs_dict: List[Checksum] = []
@@ -106,7 +106,7 @@ def create_graph(
 ) -> Tuple[Dict[Tuple[str, str], AppVersion], Dict[str, Checksum]]:
     av_dict: Dict[Tuple[str, str], AppVersion] = {}
     for av_tuple, _ in av_to_cs.items():
-        av_dict[av_tuple] = AppVersion(av_tuple, SortedSet())
+        av_dict[av_tuple] = AppVersion(av_tuple, SortedSet(), -1)
     av_to_cs.clear()
 
     cs_dict: Dict[str, Checksum] = {}
@@ -126,7 +126,7 @@ def create_graph_light(
 ) -> Tuple[Dict[Tuple[str, str], AppVersion], Dict[str, Checksum]]:
     av_dict: Dict[Tuple[str, str], AppVersion] = {}
     for av_tuple in avs:
-        av_dict[av_tuple] = AppVersion(av_tuple, SortedSet())
+        av_dict[av_tuple] = AppVersion(av_tuple, SortedSet(), -1)
     avs.clear()
 
     cs_dict: Dict[str, Checksum] = {}
@@ -141,13 +141,20 @@ def create_graph_light(
 
 
 def find_defined_av_dict(
-        av_dict: Dict[Tuple[str, str], AppVersion]
+        av_dict: Dict[Tuple[str, str], AppVersion],
+        sufficient_check_sum: int
 ) -> Dict[Tuple[str, str], AppVersion]:
     bfs_queue: Deque[AppVersion] = deque()
     for av in av_dict.values():
+        if av.sufficient_check_sums == -1:
+            av.sufficient_check_sums = sufficient_check_sum
         av.calc_exclusive_cs()
         if av.is_defined():
             bfs_queue.append(av)
+        else:
+            av.sufficient_check_sums = sufficient_check_sum
+            if av.is_defined():
+                bfs_queue.append(av)
 
     well_defined_av_dict: Dict[Tuple[str, str], AppVersion] = {}
     while len(bfs_queue) > 0:
