@@ -10,15 +10,14 @@ def do(path_to_db, check_sums, db_type):
         do_json_old_impl(path_to_db, check_sums)
 
 
-def format_version(s):
-    j = json.loads(s)
+def format_version(j):
     if j["type"] == 'SINGLE':
         return j["app"] + ":" + j["version"]
     elif j["type"] == 'MERGED_WITHIN_SINGLE_APP':
         app = j["app"]
         return str(["%s:%s" % (app, x) for x in j["versions"]])
     else:
-        return s
+        return json.dumps(j)
 
 
 def do_json_impl(path_to_db, check_sums):
@@ -26,8 +25,7 @@ def do_json_impl(path_to_db, check_sums):
         db = json.load(db_file)
 
     def get_entry(key):
-        # return format_version(json.dumps(db[str(key)]))
-        return format_version(str(key))
+        return format_version(db[str(key)])
 
     matched_avs = set()
     dependencies = {}
@@ -42,11 +40,11 @@ def do_json_impl(path_to_db, check_sums):
         entry = db[cs]
         av = entry[0]
         matched_avs.add(av)
-        deps = dependencies.setdefault(av, [])
+        deps = dependencies.setdefault(av, set())
         for dep in entry[1:]:
-            deps.append(dep)
-        m1 = 'path: %s\ncs: %s\nav: %s\ndeps: %s' % (path, cs, get_entry(av), [get_entry(x) for x in deps])
-        m2 = 'av: %s\ndeps: %s' % (str(av), str(deps))
+            deps.add(dep)
+        m1 = 'path: %s\ncs: %s\nav: %s\ndeps: %s' % (path, cs, get_entry(av), [get_entry(x) for x in entry[1:]])
+        m2 = 'av: %s\ndeps: %s' % (str(av), str(entry[1:]))
         msgs.append('%s\n%s\n' % (m1, m2))
     for msg in sorted(msgs):
         print(msg)
@@ -65,10 +63,10 @@ def do_json_impl(path_to_db, check_sums):
         if not is_dependant:
             msgs1.append('%s found!' % get_entry(av))
 
-    for msg in msgs1:
+    for msg in sorted(msgs1):
         print(msg)
     print()
-    for msg in msgs2:
+    for msg in sorted(msgs2):
         print(msg)
     print()
 
@@ -78,7 +76,7 @@ def do_leveldb_impl(path_to_db, check_sums):
     db = plyvel.DB(path_to_db)
 
     def get_entry(key):
-        return db.get(key).decode("utf-8")
+        return format_version(json.loads(db.get(key).decode("utf-8")))
 
     matched_avs = set()
     dependencies = {}
@@ -110,9 +108,9 @@ def do_leveldb_impl(path_to_db, check_sums):
         )
 
         matched_avs.add(found_av)
-        deps = dependencies.setdefault(found_av, [])
+        deps = dependencies.setdefault(found_av, set())
         for dep in found_deps:
-            deps.append(dep)
+            deps.add(dep)
 
     msgs1 = []
     msgs2 = []
@@ -128,12 +126,12 @@ def do_leveldb_impl(path_to_db, check_sums):
         if not is_dependant:
             msgs1.append('%s found!' % get_entry(found_av))
 
-    for msg in msgs1:
+    for msg in sorted(msgs1):
         print(msg)
     print()
-    # for msg in msgs2:
-    #     print(msg)
-    # print()
+    for msg in sorted(msgs2):
+        print(msg)
+    print()
 
 
 def do_json_old_impl(path_to_db, check_sums):
