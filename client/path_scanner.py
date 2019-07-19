@@ -11,8 +11,8 @@ def scan_for_cs(path):
             try:
                 path = os.path.join(root, file_name)
                 hsh = evaluate_hash(path)
-                print('%s -> %s' % (path, hsh))
-                pq.add(hsh)
+                # print('%s -> %s' % (path, hsh))
+                pq.add((hsh, path))
             except Exception as e:
                 print(e)
                 raise e
@@ -20,4 +20,4 @@ def scan_for_cs(path):
 
 
 def evaluate_hash(path):
-    return hashlib.sha256(open(path, 'rb').read()).hexdigest()
+    return hashlib.sha256(open(path, 'rb').read())
