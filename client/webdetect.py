@@ -6,18 +6,8 @@ def do(path_to_db, check_sums, db_type):
         do_leveldb_impl(path_to_db, check_sums)
     elif db_type == 'json':
         do_json_impl(path_to_db, check_sums)
-    elif db_type == 'json_old':
-        do_json_old_impl(path_to_db, check_sums)
-
-
-def format_version(j):
-    if j["type"] == 'SINGLE':
-        return j["app"] + ":" + j["version"]
-    elif j["type"] == 'MERGED_WITHIN_SINGLE_APP':
-        app = j["app"]
-        return str(["%s:%s" % (app, x) for x in j["versions"]])
     else:
-        return json.dumps(j)
+        raise NotImplementedError("unknown db type %s" % db_type)
 
 
 def do_json_impl(path_to_db, check_sums):
@@ -25,50 +15,22 @@ def do_json_impl(path_to_db, check_sums):
         db = json.load(db_file)
 
     def get_entry(key):
-        return format_version(db[str(key)])
+        try:
+            if type(key) is str:
+                return db[key[:64]]
+            else:
+                return db[key.hexdigest()]
+        except KeyError:
+            return None
 
-    matched_avs = set()
-    dependencies = {}
+    def format_entry(key):
+        e = db[str(key)]
+        return [av["app"] + ":" + av["version"] for av in e["av"]]
 
-    msgs = []
+    def parse_entry(cs, entry):
+        return entry[0], entry[1:]
 
-    print()
-    for (cs, path) in check_sums:
-        cs = cs.hexdigest().rstrip('\n')
-        if cs not in db:
-            continue
-        entry = db[cs]
-        av = entry[0]
-        matched_avs.add(av)
-        deps = dependencies.setdefault(av, set())
-        for dep in entry[1:]:
-            deps.add(dep)
-        m1 = 'path: %s\ncs: %s\nav: %s\ndeps: %s' % (path, cs, get_entry(av), [get_entry(x) for x in entry[1:]])
-        m2 = 'av: %s\ndeps: %s' % (str(av), str(entry[1:]))
-        msgs.append('%s\n%s\n' % (m1, m2))
-    for msg in sorted(msgs):
-        print(msg)
-
-    msgs1 = []
-    msgs2 = []
-
-    for av in matched_avs:
-        is_dependant = False
-        for dep in dependencies[av]:
-            if dep in matched_avs:
-                msgs2.append(
-                    '%s discarded, as it depends on AV %s, which is also present' % (get_entry(av), get_entry(dep)))
-                is_dependant = True
-                break
-        if not is_dependant:
-            msgs1.append('%s found!' % get_entry(av))
-
-    for msg in sorted(msgs1):
-        print(msg)
-    print()
-    for msg in sorted(msgs2):
-        print(msg)
-    print()
+    return do_impl(check_sums, get_entry, format_entry, parse_entry)
 
 
 def do_leveldb_impl(path_to_db, check_sums):
@@ -76,108 +38,106 @@ def do_leveldb_impl(path_to_db, check_sums):
     db = plyvel.DB(path_to_db)
 
     def get_entry(key):
-        return format_version(json.loads(db.get(key).decode("utf-8")))
+        return db.get(key.digest())
 
-    matched_avs = set()
-    dependencies = {}
+    def format_entry(key):
+        return str([k["app"] + ":" + k["version"] for k in json.loads(db.get(key).decode("utf-8"))["av"]])
 
-    msgs = []
-
-    print()
-    for (cs, path) in check_sums:
-        entry = db.get(cs.digest())
-        if entry is None:
-            continue
+    def parse_entry(cs, entry):
         if len(entry) % 4 != 0:
             raise Warning("Not array of integers? %s" % cs.hexdigest())
         if len(entry) < 4:
             raise Warning("There always should be one integer in entry. %s" % cs.hexdigest())
-
         ids = []
         for i in range(0, len(entry), 4):
             ids.append(entry[i:(i + 4)])
-        found_av = ids[0]
-        found_deps = ids[1:]
+        return ids[0], ids[1:]
 
-        msgs.append(
-            'path: %s\nav: %s\ndeps: %s\n' % (
-                path,
-                get_entry(found_av),
-                [get_entry(x) for x in found_deps]
-            )
-        )
+    return do_impl(check_sums, get_entry, format_entry, parse_entry)
 
-        matched_avs.add(found_av)
+
+def do_impl(check_sums, get_entry, format_entry, parse_entry):
+    matched_avs = {}
+    dependencies = {}
+    implied = {}
+
+    files_found_log = []
+    discarded_log = []
+    av_found_log = []
+    implied_log = []
+
+    for (local_cs_sha256, path) in check_sums:
+        entry = get_entry(local_cs_sha256)
+        if entry is None:
+            continue
+        found_av, found_deps = parse_entry(local_cs_sha256, entry)
+
+        matched_avs[found_av] = matched_avs.setdefault(found_av, 0) + 1
         deps = dependencies.setdefault(found_av, set())
         for dep in found_deps:
             deps.add(dep)
 
-    msgs1 = []
-    msgs2 = []
+        files_found_log.append(
+            'path: %s\nav: %s\ndeps: %s' % (path, format_entry(found_av), [format_entry(x) for x in found_deps]))
 
-    for found_av in matched_avs:
-        is_dependant = False
-        for dep in dependencies[found_av]:
-            if dep in matched_avs:
-                msgs2.append('%s discarded, as it depends on AV %s, which is also present' % (
-                    get_entry(found_av), get_entry(dep)))
-                is_dependant = True
-                break
-        if not is_dependant:
-            msgs1.append('%s found!' % get_entry(found_av))
+    for (av, cnt) in matched_avs.items():
+        t = get_entry(str(av))
+        total = t["total"]
+        coeff = float(cnt) / float(t["total"])
 
-    for msg in sorted(msgs1):
+        if any([dep in matched_avs for dep in dependencies[av]]):
+            discarded_log.append('%s discarded, as it depends on AV, which is also present; %d/%d = %f' % (
+                format_entry(av), cnt, total, coeff))
+            continue
+        if coeff < 0.5:
+            discarded_log.append(
+                "%s discarded, as it does not pass coeff filter; %d/%d = %f" % (format_entry(av), cnt, total, coeff))
+            continue
+
+        av_found_log.append('%s found! %d/%d = %f' % (format_entry(av), cnt, total, coeff))
+        for i in t["impl"]:
+            if i in matched_avs:
+                implied.setdefault(i, set()).add(av)
+
+    for (av, v) in implied.items():
+        t = get_entry(str(av))
+        total = t["total"]
+        coeff = float(cnt) / float(t["total"])
+        if coeff < 0.5:
+            discarded_log.append("%s implication discarded, as it does not pass coeff filter; %d/%d = %f" % (
+                format_entry(av), cnt, total, coeff))
+        else:
+            implied_log.append(
+                '%s implied by %s! %d/%d = %f' % (format_entry(av), [format_entry(x) for x in v], cnt, total, coeff))
+
+    print()
+    print("Found files:")
+    for msg in sorted(files_found_log):
         print(msg)
     print()
-    for msg in sorted(msgs2):
+    print("Discarded app versions:")
+    for msg in sorted(discarded_log):
         print(msg)
     print()
-
-
-def do_json_old_impl(path_to_db, check_sums):
-    import json
-    with open(path_to_db, 'r') as db_file:
-        db = json.load(db_file)
-
-    matched_avs = set()
-    dependencies = {}
-
-    msgs = []
-
-    print()
-    for (cs, path) in check_sums:
-        cs = cs.hexdigest().rstrip('\n')
-        if cs in db:
-            msgs.append('path: %s\nav: %s\ndeps: %s\n' % (str(db[cs]["av"]), path, str(db[cs]["deps"])))
-
-            entry = db[cs]
-            av = entry["av"]
-            av = str(av)
-            matched_avs.add(av)
-            deps = dependencies.setdefault(av, [])
-            for dep in entry["deps"]:
-                dep = str(dep)
-                deps.append(dep)
-
-    for msg in sorted(msgs):
-        print(msg)
-
-    msgs1 = []
-    msgs2 = []
-
-    for av in matched_avs:
-        is_dependant = False
-        for dep in dependencies[av]:
-            if dep in matched_avs:
-                msgs2.append('%s discarded, as it depends on AV %s, which is also present' % (str(av), str(dep)))
-                is_dependant = True
-                break
-        if not is_dependant:
-            msgs1.append('%s found!' % str(av))
-
-    for msg in msgs1:
+    print("Found app versions:")
+    for msg in sorted(av_found_log):
         print(msg)
     print()
-    for msg in msgs2:
+    print("Implied app versions:")
+    for msg in sorted(implied_log):
         print(msg)
-    print()
+
+
+def main():
+    import sys
+    sha_list_file_path = sys.argv[1]
+    path_to_db = sys.argv[2]
+    db_type = sys.argv[3]
+    print(sys.argv)
+    with open(sha_list_file_path) as sha_list_file:
+        lines = sha_list_file.readlines()
+        do(path_to_db, [(x.rstrip('\n'), x.rstrip('\n')) for x in lines], db_type)
+
+
+if __name__ == '__main__':
+    main()
