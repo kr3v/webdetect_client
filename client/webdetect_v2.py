@@ -5,6 +5,25 @@ from typing import List, Callable, Set, Dict, Tuple, Optional
 
 import plyvel
 
+OTHER_APPS_TAG = 'other_apps'
+TAGS_MAP = {
+    'wordpress-cores': 'wp_core',
+    'drupal-cores': 'drupal_core',
+    'joomla-cores': 'joomla_core'
+}
+
+
+def app_as_tag(app: str) -> Optional[str]:
+    if app.startswith("wp.p"):
+        return 'wp_plugin_' + app.lstrip('wp.p').replace('-', '_')
+    if app.startswith("wp.t"):
+        return None
+    if app.endswith('-cores'):
+        if app in TAGS_MAP:
+            return TAGS_MAP[app]
+        else:
+            return OTHER_APPS_TAG
+
 
 class AppVersion:
     app: str
@@ -161,3 +180,8 @@ if __name__ == '__main__':
     for avs in all_detected_app_versions:
         for av in avs:
             all_detected_apps.add(av.app)
+
+    # dictionary with found app to it's tag
+    tags: Dict[str, str] = {}
+    for app in all_detected_apps:
+        tags[app] = app_as_tag(app)
