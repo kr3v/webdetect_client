@@ -26,7 +26,7 @@ def walk(version_root, app, version):
                 file_path = os.path.join(root, f)
                 hsh = sha256(open(file_path, 'rb').read()).hexdigest()
                 print('%s\t%s\t%s\t%s\t%s' % (
-                app, version, hsh, file_path, remove_prefix(file_path, version_root).count('/')))
+                    app, version, hsh, remove_prefix(file_path, version_root).count('/'), file_path))
             except:
                 print('err: %s' % str(sys.exc_info()), file=sys.stderr)
 
