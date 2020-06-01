@@ -1,8 +1,8 @@
 #!/usr/bin/python
 import csv
+import hashlib
 import os
 import sys
-from hashlib import sha256
 
 idx = 1
 
@@ -24,11 +24,23 @@ def walk(version_root, app, version):
         for f in f_names:
             try:
                 file_path = os.path.join(root, f)
-                hsh = sha256(open(file_path, 'rb').read()).hexdigest()
-                print('%s\t%s\t%s\t%s\t%s' % (
-                    app, version, hsh, remove_prefix(file_path, version_root).count('/'), file_path))
+                hsh = sha256_f(file_path)
+                # print('%s\t%s\t%s\t%s\t%s' % (
+                #     app, version, hsh, remove_prefix(file_path, version_root).count('/'), file_path))
+                print('%s\t%s\t%s\t%s' % (app, version, hsh, remove_prefix(file_path, version_root).count('/')))
             except:
                 print('err: %s' % str(sys.exc_info()), file=sys.stderr)
+
+
+BLOCK_SIZE = 16 * (2 ** 10)
+
+
+def sha256_f(path):
+    sha256_hash = hashlib.sha256()
+    with open(path, 'rb') as f:
+        for byte_block in iter(lambda: f.read(BLOCK_SIZE), b""):
+            sha256_hash.update(byte_block)
+        return sha256_hash.hexdigest()
 
 
 def remove_prefix(string, prefix):
